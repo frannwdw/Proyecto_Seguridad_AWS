@@ -25,6 +25,30 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { UserAvatar, extractUsernameFromEmail } from '../lib/userAvatar';
 import { VoiceAssistantControl } from '../components/VoiceAssistantControl';
+import { ScrollableDropdown } from '../modules/sales/components/ScrollableDropdown';
+import { useLocalActivo } from '../services/localService';
+
+/** Selector compacto de Local/Sucursal activo para la barra superior. */
+const SelectorLocalTopbar: React.FC<{ className?: string }> = ({ className = '' }) => {
+  const { local, localesActivos, cambiar } = useLocalActivo();
+  if (localesActivos.length === 0) return null;
+  return (
+    <ScrollableDropdown
+      value={local?.id ?? 0}
+      onSelect={(v) => cambiar(Number(v))}
+      searchable
+      placeholder="Local de operativa…"
+      className={className}
+      options={[
+        ...localesActivos.map((l) => ({
+          value: l.id,
+          label: l.nombre,
+          description: `${l.codigo}${l.es_principal ? ' · Matriz' : ''} · ${l.direccion}`,
+        })),
+      ]}
+    />
+  );
+};
 
 export const AppLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -145,6 +169,7 @@ export const AppLayout: React.FC = () => {
     {
       group: 'ADMINISTRACIÓN',
       items: [
+        { label: 'Locales & Sucursales', path: '/locales', icon: Building2, permiso: 'locales:administrar' },
         { label: 'Configuración & RBAC', path: '/settings', icon: Settings, permiso: 'empresas:configurar' }
       ]
     }
@@ -351,6 +376,9 @@ export const AppLayout: React.FC = () => {
               <Building2 className="w-4 h-4 text-sky-600 shrink-0" />
               <span className="truncate max-w-[120px] sm:max-w-none">SalesIA Tech Solutions S.A.C.</span>
               <span className="text-slate-300 hidden sm:inline">/</span>
+              <div className="hidden md:block w-44 lg:w-56 z-50 relative">
+                <SelectorLocalTopbar className="z-50" />
+              </div>
               <span className="hidden sm:inline bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full text-[11px] font-semibold border border-sky-200 whitespace-nowrap">
                 USD • IGV 18%
               </span>

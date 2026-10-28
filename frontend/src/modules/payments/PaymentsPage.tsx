@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, Plus, DollarSign, Search, CheckCircle2, X } from 'lucide-react';
+import { CreditCard, Plus, DollarSign, Search, CheckCircle2, X, AlertTriangle } from 'lucide-react';
 import { getSales, getPaymentMethods, createPayment } from '../../services/mockDataService';
+import { ScrollableDropdown } from '../sales/components/ScrollableDropdown';
 import { Payment, PaymentMethod, Sale } from '../../types';
 
 export const PaymentsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [aviso, setAviso] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
 
   // Form state
   const [selectedSaleId, setSelectedSaleId] = useState<number>(1);
@@ -43,12 +45,35 @@ export const PaymentsPage: React.FC = () => {
       };
       return await createPayment(payload);
     },
-    onSuccess: () => {
+    onSuccess: (pay) => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
       setIsRegisterModalOpen(false);
       setReference('');
-    }
+      setAviso({ tipo: 'ok', texto: `Cobro de $${Number(pay.amount).toFixed(2)} registrado (${pay.payment_method_name}). La venta actualizó su saldo y estado de cobro.` });
+    },
+    onError: (e: any) => setAviso({ tipo: 'error', texto: e?.message || 'Error al registrar el cobro.' })
+  });
+
+  // Amortización Total rápida: elige el método de pago en el desplegable de la
+  // fila y el saldo completo se amortiza al instante con ese medio.
+  const amortizarMutation = useMutation({
+    mutationFn: (p: { venta: Sale; methodId: number }) => {
+      const metodo = paymentMethods.find(m => m.id === p.methodId);
+      return createPayment({
+        sale_id: p.venta.id,
+        payment_method_id: p.methodId,
+        amount: Number(p.venta.pending_balance),
+        reference: `AMORTIZACION_TOTAL_${(metodo?.name || 'CAJA').toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`,
+        notes: `Amortización total del saldo vía ${metodo?.name || 'caja'} (cobranza rápida)`
+      });
+    },
+    onSuccess: (pay) => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      setAviso({ tipo: 'ok', texto: `Venta ${pay.sale_code} amortizada por completo ($${Number(pay.amount).toFixed(2)}) vía ${pay.payment_method_name}. Estado: PAID.` });
+    },
+    onError: (e: any) => setAviso({ tipo: 'error', texto: e?.message || 'Error al amortizar el saldo.' })
   });
 
   return (
@@ -76,6 +101,23 @@ export const PaymentsPage: React.FC = () => {
           <span>Registrar Cobro</span>
         </button>
       </div>
+
+      {/* Aviso de operación de cobranza (éxito o error de regla de negocio) */}
+      {aviso && (
+        <div className={`flex items-start gap-2 p-3 rounded-xl border text-xs ${
+          aviso.tipo === 'ok'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : 'bg-rose-50 text-rose-700 border-rose-200'
+        }`}>
+          {aviso.tipo === 'ok'
+            ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+            : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />}
+          <span className="flex-1">{aviso.texto}</span>
+          <button onClick={() => setAviso(null)} className="shrink-0 opacity-60 hover:opacity-100">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Pending balance banner */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -134,16 +176,37 @@ export const PaymentsPage: React.FC = () => {
                   </td>
                   <td className="py-3 px-4 text-right whitespace-nowrap">
                     {Number(s.pending_balance) > 0 && s.status === 'CONFIRMED' && (
-                      <button
-                        onClick={() => {
-                          setSelectedSaleId(s.id);
-                          setAmount(Number(s.pending_balance));
-                          setIsRegisterModalOpen(true);
-                        }}
-                        className="text-sky-600 hover:text-sky-700 font-semibold text-xs px-2 py-1 rounded bg-sky-50"
-                      >
-                        Cobrar Saldo
-                      </button>
+                      <>
+                        <div className="inline-block w-32 align-middle">
+                          <ScrollableDropdown
+                            value=""
+                            onSelect={(v) => amortizarMutation.mutate({ venta: s, methodId: Number(v) })}
+                            searchable={false}
+                            placeholder="Amortizar Total…"
+                            options={paymentMethods.map((m) => ({
+                              value: m.id,
+                              label: m.name,
+                              description: `Saldo completo: $${Number(s.pending_balance).toFixed(2)}`,
+                            }))}
+                          />
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedSaleId(s.id);
+                            setAmount(Number(s.pending_balance));
+                            setIsRegisterModalOpen(true);
+                          }}
+                          className="text-sky-600 hover:text-sky-700 font-semibold text-xs px-2 py-1 rounded bg-sky-50 ml-1"
+                          title="Registrar un cobro parcial o total con método y referencia"
+                        >
+                          Cobro Parcial
+                        </button>
+                      </>
+                    )}
+                    {Number(s.pending_balance) <= 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                        <CheckCircle2 className="w-3 h-3" /> LIQUIDADA
+                      </span>
                     )}
                   </td>
                 </tr>

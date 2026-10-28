@@ -20,6 +20,7 @@ import { ProbabilityPage } from './modules/probability/ProbabilityPage';
 import { InsightsPage } from './modules/insights/InsightsPage';
 import { ReportsPage } from './modules/reports/ReportsPage';
 import { SettingsPage } from './modules/settings/SettingsPage';
+import { LocalesPage } from './modules/locales/LocalesPage';
 import { ChatPage } from './modules/chat/ChatPage';
 
 const queryClient = new QueryClient({
@@ -106,6 +107,7 @@ export const App: React.FC = () => {
                 <Route path="insights" element={<InsightsPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
+                <Route path="locales" element={<LocalesPage />} />
                 <Route path="chat" element={<ChatPage />} />
               </Route>
 

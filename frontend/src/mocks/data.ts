@@ -8,7 +8,8 @@
 import type {
   Customer, Product, Category, InventoryItem, InventoryMovement,
   Order, OrderItem, Sale, SaleDetail, Payment, PaymentMethod,
-  Employee, EmployeePerformance, DashboardSummary, Insight
+  Employee, EmployeePerformance, DashboardSummary, Insight,
+  Local
 } from '../types';
 
 // ============================================================================
@@ -164,11 +165,66 @@ export const mockInventory: InventoryItem[] = mockProducts.map(p => ({
 }));
 
 export const mockInventoryMovements: InventoryMovement[] = [
-  { id: 1, inventory_id: 1, product_id: 1, product_name: 'Laptop ThinkPad X1 Carbon', product_sku: 'ELEC-001', movement_type: 'ENTRY', quantity: 10, previous_stock: 5, resulting_stock: 15, reference_doc: 'OC-2026-001', reason: 'Reabastecimiento de proveedor Lenovo', user_name: 'Admin General', created_at: '2026-10-01T10:00:00Z' },
-  { id: 2, inventory_id: 2, product_id: 2, product_name: 'Monitor Dell UltraSharp 27"', product_sku: 'ELEC-002', movement_type: 'ENTRY', quantity: 12, previous_stock: 10, resulting_stock: 22, reference_doc: 'OC-2026-002', reason: 'Ingreso de lote Dell', user_name: 'Admin General', created_at: '2026-10-03T10:00:00Z' },
-  { id: 3, inventory_id: 1, product_id: 1, product_name: 'Laptop ThinkPad X1 Carbon', product_sku: 'ELEC-001', movement_type: 'RESERVE', quantity: 2, previous_stock: 15, resulting_stock: 13, reference_doc: 'PED-2026-005', reason: 'Reserva por pedido confirmado', user_name: 'Ana Torres', created_at: '2026-10-10T14:00:00Z' },
-  { id: 4, inventory_id: 3, product_id: 3, product_name: 'Teclado Mecánico Logitech MX Keys', product_sku: 'PERI-001', movement_type: 'EXIT', quantity: 5, previous_stock: 53, resulting_stock: 48, reference_doc: 'VTA-2026-012', reason: 'Despacho de venta directa', user_name: 'Carlos Mendoza', created_at: '2026-10-12T11:00:00Z' },
-  { id: 5, inventory_id: 8, product_id: 8, product_name: 'Escritorio Eléctrico Altura Ajustable', product_sku: 'OFIC-002', movement_type: 'ADJUSTMENT', quantity: -1, previous_stock: 5, resulting_stock: 4, reference_doc: 'AJ-2026-001', reason: 'Ajuste de inventario por daño en almacén', user_name: 'Admin General', created_at: '2026-10-15T09:00:00Z' },
+  { id: 1, inventory_id: 1, product_id: 1, product_name: 'Laptop ThinkPad X1 Carbon', product_sku: 'ELEC-001', movement_type: 'ENTRY', quantity: 10, previous_stock: 5, resulting_stock: 15, reference_doc: 'OC-2026-001', reason: 'Reabastecimiento de proveedor Lenovo', user_name: 'Admin General', created_at: '2026-10-01T10:00:00Z', local_id: 1 },
+  { id: 2, inventory_id: 2, product_id: 2, product_name: 'Monitor Dell UltraSharp 27"', product_sku: 'ELEC-002', movement_type: 'ENTRY', quantity: 12, previous_stock: 10, resulting_stock: 22, reference_doc: 'OC-2026-002', reason: 'Ingreso de lote Dell', user_name: 'Admin General', created_at: '2026-10-03T10:00:00Z', local_id: 2 },
+  { id: 3, inventory_id: 1, product_id: 1, product_name: 'Laptop ThinkPad X1 Carbon', product_sku: 'ELEC-001', movement_type: 'RESERVE', quantity: 2, previous_stock: 15, resulting_stock: 13, reference_doc: 'PED-2026-005', reason: 'Reserva por pedido confirmado', user_name: 'Ana Torres', created_at: '2026-10-10T14:00:00Z', local_id: 1 },
+  { id: 4, inventory_id: 3, product_id: 3, product_name: 'Teclado Mecánico Logitech MX Keys', product_sku: 'PERI-001', movement_type: 'EXIT', quantity: 5, previous_stock: 53, resulting_stock: 48, reference_doc: 'VTA-2026-012', reason: 'Despacho de venta directa', user_name: 'Carlos Mendoza', created_at: '2026-10-12T11:00:00Z', local_id: 3 },
+  { id: 5, inventory_id: 8, product_id: 8, product_name: 'Escritorio Eléctrico Altura Ajustable', product_sku: 'OFIC-002', movement_type: 'ADJUSTMENT', quantity: -1, previous_stock: 5, resulting_stock: 4, reference_doc: 'AJ-2026-001', reason: 'Ajuste de inventario por daño en almacén', user_name: 'Admin General', created_at: '2026-10-15T09:00:00Z', local_id: 4 },
+];
+
+// ============================================================================
+// LOCALES / SUCURSALES FÍSICAS — Series SUNAT independientes por local
+// F101/B101 = San Isidro (matriz) | F102/B102 = Miraflores | etc.
+// ============================================================================
+export const mockLocales: Local[] = [
+  {
+    id: 1,
+    codigo: 'L001',
+    nombre: 'SalesIA San Isidro',
+    direccion: 'Av. República de Panamá 3505, San Isidro, Lima - Perú',
+    telefono: '+51 (01) 555-1200',
+    es_principal: true,
+    series_factura: 'F101',
+    series_boleta: 'B101',
+    is_active: true,
+    created_at: '2023-01-15T10:00:00Z',
+  },
+  {
+    id: 2,
+    codigo: 'L002',
+    nombre: 'SalesIA Miraflores',
+    direccion: 'Av. Larco 845, Local 2, Miraflores, Lima - Perú',
+    telefono: '+51 (01) 555-1240',
+    es_principal: false,
+    series_factura: 'F102',
+    series_boleta: 'B102',
+    is_active: true,
+    created_at: '2024-06-01T10:00:00Z',
+  },
+  {
+    id: 3,
+    codigo: 'L003',
+    nombre: 'SalesIA Lima Centro',
+    direccion: 'Av. Arequipa 2270, Lince, Lima - Perú',
+    telefono: '+51 (01) 555-1280',
+    es_principal: false,
+    series_factura: 'F103',
+    series_boleta: 'B103',
+    is_active: true,
+    created_at: '2025-03-10T10:00:00Z',
+  },
+  {
+    id: 4,
+    codigo: 'L004',
+    nombre: 'SalesIA Canal Online',
+    direccion: 'Av. República de Panamá 3505, San Isidro, Lima (Centro de despacho)',
+    telefono: '+51 998 400 155',
+    es_principal: false,
+    series_factura: 'F104',
+    series_boleta: 'B104',
+    is_active: true,
+    created_at: '2025-08-20T10:00:00Z',
+  },
 ];
 
 // ============================================================================
@@ -244,6 +300,8 @@ export const mockSales: Sale[] = [
   {
     id: 1, sale_code: 'VTA-2026-001', customer_id: 1, customer_name: 'Tech Solutions Corp. S.A.C.',
     salesperson_id: 1, salesperson_name: 'Pedro Torres Castillo', status: 'CONFIRMED', payment_status: 'PAID',
+    local_id: 1, local_name: 'SalesIA San Isidro',
+    document_type: 'FACTURA', document_series: 'F101', document_number: 1, payment_condition: 'CONTADO',
     subtotal: 5199.96, tax_amount: 935.99, discount_amount: 0, total_amount: 6135.95,
     paid_amount: 6135.95, pending_balance: 0, notes: 'Venta de 4 laptops', created_at: '2026-09-15T10:00:00Z',
     items: [
@@ -253,6 +311,8 @@ export const mockSales: Sale[] = [
   {
     id: 2, sale_code: 'VTA-2026-002', customer_id: 5, customer_name: 'Innovación Digital S.A.',
     salesperson_id: 3, salesperson_name: 'Anderson Aponte', status: 'CONFIRMED', payment_status: 'PAID',
+    local_id: 2, local_name: 'SalesIA Miraflores',
+    document_type: 'FACTURA', document_series: 'F102', document_number: 1, payment_condition: 'CONTADO',
     subtotal: 8249.85, tax_amount: 1484.97, discount_amount: 0, total_amount: 9734.82,
     paid_amount: 9734.82, pending_balance: 0, notes: 'Compra masiva equipamiento', created_at: '2026-09-22T14:00:00Z',
     items: [
@@ -262,6 +322,8 @@ export const mockSales: Sale[] = [
   {
     id: 3, sale_code: 'VTA-2026-003', customer_id: 3, customer_name: 'Distribuidora Global E.I.R.L.',
     salesperson_id: 2, salesperson_name: 'Jhon Gonzales', status: 'CONFIRMED', payment_status: 'PARTIAL',
+    local_id: 1, local_name: 'SalesIA San Isidro',
+    document_type: 'FACTURA', document_series: 'F101', document_number: 2, payment_condition: 'CREDITO',
     subtotal: 13200.00, tax_amount: 2376.00, discount_amount: 0, total_amount: 15576.00,
     paid_amount: 10000.00, pending_balance: 5576.00, notes: 'Lote de licencias corporativas', created_at: '2026-10-01T10:00:00Z',
     items: [
@@ -271,6 +333,8 @@ export const mockSales: Sale[] = [
   {
     id: 4, sale_code: 'VTA-2026-004', customer_id: 2, customer_name: 'María Elena Gutiérrez Sánchez',
     salesperson_id: 1, salesperson_name: 'Pedro Torres Castillo', status: 'CONFIRMED', payment_status: 'PAID',
+    local_id: 3, local_name: 'SalesIA Lima Centro',
+    document_type: 'BOLETA', document_series: 'B103', document_number: 1, payment_condition: 'CONTADO',
     subtotal: 1599.97, tax_amount: 288.00, discount_amount: 0, total_amount: 1887.97,
     paid_amount: 1887.97, pending_balance: 0, created_at: '2026-10-08T11:00:00Z',
     items: [
@@ -281,6 +345,8 @@ export const mockSales: Sale[] = [
   {
     id: 5, sale_code: 'VTA-2026-005', customer_id: 4, customer_name: 'Carlos Alberto Mendoza Ríos',
     salesperson_id: 2, salesperson_name: 'Jhon Gonzales', status: 'CONFIRMED', payment_status: 'PENDING',
+    local_id: 4, local_name: 'SalesIA Canal Online',
+    document_type: 'BOLETA', document_series: 'B104', document_number: 1, payment_condition: 'CREDITO',
     subtotal: 1299.99, tax_amount: 234.00, discount_amount: 0, total_amount: 1533.99,
     paid_amount: 0, pending_balance: 1533.99, created_at: '2026-10-14T09:00:00Z',
     items: [

@@ -172,6 +172,17 @@ export const CustomersPage: React.FC = () => {
     return allSales.filter(s => cIds.has(s.customer_id)).slice(0, 8);
   }, [clientesParaReporte, allSales]);
 
+  // Deuda viva por cliente: suma de saldos pendientes de sus ventas confirmadas
+  const deudaPorCliente = useMemo(() => {
+    const map = new Map<number, number>();
+    allSales
+      .filter(s => s.status === 'CONFIRMED')
+      .forEach(s => {
+        map.set(s.customer_id, (map.get(s.customer_id) || 0) + Number(s.pending_balance || 0));
+      });
+    return map;
+  }, [allSales]);
+
   // Productos vendidos a la cartera de clientes seleccionada
   const productosParaReporte = useMemo<ProductReportItem[]>(() => {
     const map = new Map<string, ProductReportItem>();
@@ -350,6 +361,7 @@ export const CustomersPage: React.FC = () => {
                   <th className="py-3 px-4">Documento</th>
                   <th className="py-3 px-4">Contacto Comercial</th>
                   <th className="py-3 px-4">Consumo Total</th>
+                  <th className="py-3 px-4">Estado de Deuda</th>
                   <th className="py-3 px-4">Estado</th>
                   <th className="py-3 px-4 text-right">Acciones</th>
                 </tr>
@@ -357,13 +369,13 @@ export const CustomersPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-10 text-slate-400">
+                    <td colSpan={8} className="text-center py-10 text-slate-400">
                       Cargando directorio de clientes desde la base de datos...
                     </td>
                   </tr>
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-10 text-slate-400">
+                    <td colSpan={8} className="text-center py-10 text-slate-400">
                       No se encontraron clientes registrados con los criterios de búsqueda.
                     </td>
                   </tr>
@@ -401,6 +413,21 @@ export const CustomersPage: React.FC = () => {
                       <td className="py-3 px-4 font-mono font-semibold text-slate-900">
                         ${Number(c.total_amount_spent || 0).toLocaleString()}
                         <div className="text-[10px] font-normal text-slate-400">{c.total_purchases_count || 0} compras</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        {(() => {
+                          const deuda = deudaPorCliente.get(c.id) || 0;
+                          return deuda > 0 ? (
+                            <span className="inline-flex flex-col px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                              <span className="font-mono font-bold">${deuda.toLocaleString()}</span>
+                              <span>Cobranza pendiente</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Al día
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-4">
                         <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">

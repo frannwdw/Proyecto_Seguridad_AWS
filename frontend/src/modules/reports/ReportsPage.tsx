@@ -16,7 +16,8 @@ import {
   Filter,
   BarChart3,
   Layers,
-  ShoppingBag
+  ShoppingBag,
+  Building2
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -31,7 +32,9 @@ import {
   Pie
 } from 'recharts';
 import { getSales, getProducts, getInventory, getEmployees, getOrders } from '../../services/mockDataService';
+import { useLocalActivo } from '../../services/localService';
 import { Sale, Product, InventoryItem, Employee, Order } from '../../types';
+import { ScrollableDropdown } from '../sales/components/ScrollableDropdown';
 import { ReportTab, ReportPeriod, CommercialReportRow, InventoryReportRow, SalespersonReportRow } from './types';
 import { exportarCentroReportesExcel } from './services/exportReportsExcelService';
 import { ReportCustomizerModal } from './components/ReportCustomizerModal';
@@ -41,12 +44,21 @@ export const ReportsPage: React.FC = () => {
   const [periodo, setPeriodo] = useState<ReportPeriod>('MES');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Local/Sucursal de reporte: '' = Consolidado de toda la red
+  const { local: localActivo, localesActivos, cambiar } = useLocalActivo();
+  const localReporte = localActivo?.id ?? 0;
 
   // Consultas de datos
-  const { data: sales = [], isLoading: isLoadingSales } = useQuery<Sale[]>({
+  const { data: salesRaw = [], isLoading: isLoadingSales } = useQuery<Sale[]>({
     queryKey: ['reports_sales'],
     queryFn: getSales
   });
+
+  // Ventas recortadas por el local de reporte
+  const sales = useMemo<Sale[]>(
+    () => (!localReporte ? salesRaw : salesRaw.filter(s => s.local_id === localReporte)),
+    [salesRaw, localReporte]
+  );
 
   const { data: products = [] } = useQuery<Product[]>({
     queryKey: ['reports_products'],
@@ -297,6 +309,23 @@ export const ReportsPage: React.FC = () => {
               {p}
             </button>
           ))}
+          {/* Local de reporte: Consolidado (todas las sedes) o un local específico */}
+          <span className="text-slate-400 flex items-center gap-1.5 ml-3 text-[11px] uppercase tracking-wider">
+            <Building2 className="w-3.5 h-3.5 text-slate-500" /> Local:
+          </span>
+          <div className="w-48 relative">
+            <ScrollableDropdown
+              value={localReporte}
+              onSelect={(v) => cambiar(Number(v))}
+              searchable
+              placeholder="Consolidado Global"
+              options={localesActivos.map(l => ({
+                value: l.id,
+                label: l.nombre,
+                description: `${l.codigo}${l.es_principal ? ' · Matriz' : ''}`,
+              }))}
+            />
+          </div>
         </div>
 
         {/* Buscador de auditoría */}

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Boxes, Plus, AlertTriangle, ArrowDownRight, ArrowUpRight, History, Sliders, X } from 'lucide-react';
 import { getInventory, getInventoryMovements, getProducts, createInventoryMovement } from '../../services/mockDataService';
+import { useLocalActivo } from '../../services/localService';
 import { InventoryItem, InventoryMovement, Product } from '../../types';
 
 export const InventoryPage: React.FC = () => {
@@ -9,6 +10,9 @@ export const InventoryPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'stock' | 'movements'>('stock');
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
+  // Filtro del kardex por local/sucursal: '' = Todos los locales
+  const { localesActivos, nombreDe } = useLocalActivo();
+  const [localFiltro, setLocalFiltro] = useState<string>('');
 
   // Form state
   const [movementForm, setMovementForm] = useState({
@@ -28,13 +32,20 @@ export const InventoryPage: React.FC = () => {
   });
 
   // Query movements
-  const { data: movements = [], isLoading: isLoadingMov } = useQuery<InventoryMovement[]>({
+  const { data: movementsRaw = [], isLoading: isLoadingMov } = useQuery<InventoryMovement[]>({
     queryKey: ['inventoryMovements'],
     queryFn: async () => {
       return await getInventoryMovements();
     },
     enabled: activeTab === 'movements'
   });
+
+  // Kardex recortado por local seleccionado ('' = Todos los locales)
+  const movements = useMemo<InventoryMovement[]>(() => {
+    const id = Number(localFiltro);
+    if (!id) return movementsRaw;
+    return movementsRaw.filter(m => m.local_id === id);
+  }, [movementsRaw, localFiltro]);
 
   // Query products for dropdown
   const { data: products = [] } = useQuery<Product[]>({
@@ -181,13 +192,28 @@ export const InventoryPage: React.FC = () => {
       {/* View 2: Movements Kardex */}
       {activeTab === 'movements' && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          {/* Filtro por local (Todos los locales / sede específica) */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50/60">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Local:</span>
+            <select
+              value={localFiltro}
+              onChange={(e) => setLocalFiltro(e.target.value)}
+              className="text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:border-sky-500 cursor-pointer"
+            >
+              <option value="">Todos los locales</option>
+              {localesActivos.map((l) => (
+                <option key={l.id} value={l.id}>{l.nombre} ({l.codigo})</option>
+              ))}
+            </select>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[700px]">
+            <table className="w-full text-left border-collapse min-w-[820px]">
               <thead>
                 <tr className="bg-slate-50/70 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-4">Fecha</th>
                   <th className="py-3 px-4">Tipo Movimiento</th>
                   <th className="py-3 px-4">Producto</th>
+                  <th className="py-3 px-4">Local</th>
                   <th className="py-3 px-4 text-center">Cantidad</th>
                   <th className="py-3 px-4 text-center">Stock Previo</th>
                   <th className="py-3 px-4 text-center">Stock Resultante</th>
@@ -197,11 +223,11 @@ export const InventoryPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {isLoadingMov ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-slate-400">Cargando kardex...</td>
+                    <td colSpan={8} className="text-center py-8 text-slate-400">Cargando kardex...</td>
                   </tr>
                 ) : movements.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-slate-400">Sin movimientos registrados.</td>
+                    <td colSpan={8} className="text-center py-8 text-slate-400">Sin movimientos registrados.</td>
                   </tr>
                 ) : (
                   movements.map((mov) => (
@@ -225,6 +251,9 @@ export const InventoryPage: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-900">{mov.product_name}</div>
                         <div className="text-[10px] text-slate-400 font-mono">SKU: {mov.product_sku}</div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs text-slate-500 font-medium">{nombreDe(mov.local_id)}</span>
                       </td>
                       <td className="py-3 px-4 text-center font-bold font-mono">
                         {mov.movement_type === 'EXIT' ? `-${mov.quantity}` : `+${mov.quantity}`}

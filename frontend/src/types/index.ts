@@ -134,6 +134,8 @@ export interface InventoryMovement {
   reason?: string;
   user_name?: string;
   created_at: string;
+  /** Local / sucursal donde ocurrió el movimiento */
+  local_id?: number;
 }
 
 export interface OrderItem {
@@ -179,6 +181,25 @@ export interface SaleDetail {
   line_total: string | number;
 }
 
+export interface Local {
+  id: number;
+  /** Código interno del local: L001, L002... */
+  codigo: string;
+  /** Nombre comercial del local (va impreso en los comprobantes SUNAT) */
+  nombre: string;
+  /** Dirección física del local (requisito impreso en el comprobante) */
+  direccion: string;
+  telefono: string;
+  /** La matriz es el local por defecto cuando no hay otro activo */
+  es_principal: boolean;
+  /** Serie de FACTURAS asignada a este local (SUNAT: serie por local) */
+  series_factura: string;
+  /** Serie de BOLETAS asignada a este local */
+  series_boleta: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Sale {
   id: number;
   sale_code: string;
@@ -188,6 +209,17 @@ export interface Sale {
   salesperson_name: string;
   status: 'CONFIRMED' | 'ANNULLED' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
   payment_status: 'PENDING' | 'PARTIAL' | 'PAID' | 'REFUNDED';
+  /** Local / sucursal emisor de la venta */
+  local_id?: number;
+  local_name?: string;
+  /** Tipo de comprobante de pago (normativa SUNAT Perú) */
+  document_type?: 'FACTURA' | 'BOLETA';
+  /** Serie del comprobante: F001 (facturas) / B001 (boletas) */
+  document_series?: string;
+  /** Correlativo numérico dentro de la serie (inmutable, no se reutiliza) */
+  document_number?: number;
+  /** Condición de pago comercial */
+  payment_condition?: 'CONTADO' | 'CREDITO';
   subtotal: string | number;
   tax_amount: string | number;
   discount_amount: string | number;

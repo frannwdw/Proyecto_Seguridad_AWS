@@ -24,6 +24,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { Customer, Sale, Order } from '../../../types';
+import { getAllPayments } from '../../../services/mockDataService';
 
 interface CustomerDetailModalProps {
   customerDetail?: Customer;
@@ -144,6 +145,30 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     return totalInvertido / totalOperaciones;
   }, [totalInvertido, totalOperaciones]);
 
+  // ============================================================================
+  // ESTADO FINANCIERO DEL CLIENTE: facturado / cobrado / saldo / historial pagos
+  // ============================================================================
+  const ventasDelCliente = useMemo(() => {
+    if (!customerDetail) return [];
+    const cId = customerDetail.id;
+    const cName = customerDetail.full_name.toLowerCase();
+    return allSales.filter(s =>
+      s.status === 'CONFIRMED' &&
+      (s.customer_id === cId || s.customer_name?.toLowerCase() === cName)
+    );
+  }, [customerDetail, allSales]);
+
+  const estadoFinanciero = useMemo(() => {
+    const facturado = ventasDelCliente.reduce((a, s) => a + Number(s.total_amount || 0), 0);
+    const cobrado = ventasDelCliente.reduce((a, s) => a + Number(s.paid_amount || 0), 0);
+    const saldo = ventasDelCliente.reduce((a, s) => a + Number(s.pending_balance || 0), 0);
+    const pctCobranza = facturado > 0 ? Math.round((cobrado / facturado) * 100) : 0;
+    const pagos = getAllPayments()
+      .filter(p => ventasDelCliente.some(s => s.id === p.sale_id))
+      .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime());
+    return { facturado, cobrado, saldo, pctCobranza, pagos };
+  }, [ventasDelCliente]);
+
   if (!customerDetail && !isLoading) return null;
 
   return (
@@ -245,6 +270,90 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                 <p className="text-xs font-bold text-indigo-900 mt-1">
                   {totalInvertido > 10000 ? 'Corporativo VIP' : totalInvertido > 3000 ? 'Preferencial' : 'Regular'}
                 </p>
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* ESTADO FINANCIERO Y COBRANZA (lógica empresarial de pagos)                */}
+            {/* ========================================================================= */}
+            <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                  Estado Financiero y Cobranza
+                </h5>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  estadoFinanciero.saldo > 0
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                }`}>
+                  {estadoFinanciero.saldo > 0 ? `Deudor · Saldo $${estadoFinanciero.saldo.toLocaleString()}` : 'Sin deudas pendientes'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase">Facturado</p>
+                  <p className="text-sm font-bold text-slate-900">${estadoFinanciero.facturado.toLocaleString()}</p>
+                </div>
+                <div className="p-2.5 bg-emerald-50/60 rounded-lg border border-emerald-200 text-center">
+                  <p className="text-[10px] font-semibold text-emerald-600 uppercase">Cobrado</p>
+                  <p className="text-sm font-bold text-emerald-800">${estadoFinanciero.cobrado.toLocaleString()}</p>
+                </div>
+                <div className={`p-2.5 rounded-lg border text-center ${estadoFinanciero.saldo > 0 ? 'bg-rose-50/60 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase">Saldo Pendiente</p>
+                  <p className={`text-sm font-bold ${estadoFinanciero.saldo > 0 ? 'text-rose-700' : 'text-slate-400'}`}>
+                    ${estadoFinanciero.saldo.toLocaleString()}
+                  </p>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase">% Cobranza</p>
+                  <p className="text-sm font-bold text-slate-900">{estadoFinanciero.pctCobranza}%</p>
+                </div>
+              </div>
+
+              {/* Barra de progreso de cobranza */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-semibold text-slate-500">
+                  <span>Efectividad de cobro</span>
+                  <span>{estadoFinanciero.pctCobranza}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${estadoFinanciero.pctCobranza >= 100 ? 'bg-emerald-500' : estadoFinanciero.pctCobranza >= 50 ? 'bg-sky-500' : 'bg-amber-500'}`}
+                    style={{ width: `${Math.min(100, estadoFinanciero.pctCobranza)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Historial de pagos del cliente */}
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Historial de Pagos ({estadoFinanciero.pagos.length})
+                </p>
+                {estadoFinanciero.pagos.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                    Sin pagos registrados: todas las operaciones están pendientes de cobro.
+                  </p>
+                ) : (
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                    {estadoFinanciero.pagos.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px]">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800">
+                            {p.payment_method_name} — {p.sale_code}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono truncate">
+                            {new Date(p.payment_date).toLocaleDateString()} {p.reference ? `• Ref: ${p.reference}` : ''}
+                          </p>
+                        </div>
+                        <span className="font-mono font-bold text-emerald-700 shrink-0">
+                          +${Number(p.amount).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

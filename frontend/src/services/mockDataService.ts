@@ -10,11 +10,12 @@ import {
   mockInventoryMovements, mockOrders, mockSales, mockPayments,
   mockPaymentMethods, mockEmployees, mockEmployeePerformance,
   mockDashboardSummary, mockInsights, mockLiveSalesMetrics,
+  mockLocales,
 } from '../mocks/data';
 import type {
   Customer, Product, Category, InventoryItem, InventoryMovement,
   Order, Sale, Payment, PaymentMethod, Employee, EmployeePerformance,
-  DashboardSummary, Insight
+  DashboardSummary, Insight, Local
 } from '../types';
 
 // Clones mutables para permitir operaciones CRUD en memoria durante la demo
@@ -28,6 +29,153 @@ let _movements = [...mockInventoryMovements];
 
 /** Simula latencia de red (250-500ms) */
 const delay = (ms = 300) => new Promise<void>(r => setTimeout(r, ms));
+
+// ============================================================================
+// LOCALES / SUCURSALES — catálogo persistente en localStorage (sin BD)
+// ============================================================================
+const LOCALES_KEY = 'salesia_locales';
+
+function _cargarLocales(): Local[] {
+  try {
+    const raw = localStorage.getItem(LOCALES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Local[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* catálogo corrupto: vuelve al mock */ }
+  return [...mockLocales];
+}
+
+let _locales: Local[] = _cargarLocales();
+
+function _persistirLocales(): void {
+  try {
+    localStorage.setItem(LOCALES_KEY, JSON.stringify(_locales));
+  } catch { /* almacenamiento lleno o restringido */ }
+}
+
+/** Catálogo completo de locales (incluye inactivos). */
+export function getLocalesSync(): Local[] {
+  return [..._locales];
+}
+
+/** Local por id (o undefined). */
+export function getLocalByIdSync(id: number): Local | undefined {
+  return _locales.find(l => l.id === Number(id));
+}
+
+/** Próximo correlativo de código interno de local: L005, L006... */
+function _siguienteCodigoLocal(): string {
+  const maximo = _locales.reduce((acc, l) => {
+    const m = /^L(\d+)$/.exec(l.codigo);
+    return m ? Math.max(acc, Number(m[1])) : acc;
+  }, 0);
+  return `L${String(maximo + 1).padStart(3, '0')}`;
+}
+
+/** Próxima serie SUNAT libre: F105..., B105... (número compartido F/B) */
+function _siguienteSerie(tipo: 'FACTURA' | 'BOLETA'): string {
+  const prefijo = tipo === 'FACTURA' ? 'F' : 'B';
+  const maximo = _locales.reduce((acc, l) => {
+    const mf = /^F(\d+)$/.exec(l.series_factura);
+    const mb = /^B(\d+)$/.exec(l.series_boleta);
+    const n = Math.max(mf ? Number(mf[1]) : 0, mb ? Number(mb[1]) : 0);
+    return Math.max(acc, n);
+  }, 0);
+  return `${prefijo}${maximo + 1}`;
+}
+
+/** Crea un local nuevo con código y series SUNAT autogenerados. */
+export async function createLocal(data: {
+  nombre: string;
+  direccion: string;
+  telefono?: string;
+  es_principal?: boolean;
+  series_factura?: string;
+  series_boleta?: string;
+}): Promise<Local> {
+  await delay();
+  const nuevo: Local = {
+    id: Math.max(0, ..._locales.map(l => l.id)) + 1,
+    codigo: _siguienteCodigoLocal(),
+    nombre: data.nombre,
+    direccion: data.direccion,
+    telefono: data.telefono || '',
+    // La matriz es única: designarla mueve la marca de la anterior
+    es_principal: data.es_principal || _locales.length === 0,
+    series_factura: data.series_factura || _siguienteSerie('FACTURA'),
+    series_boleta: data.series_boleta || _siguienteSerie('BOLETA'),
+    is_active: true,
+    created_at: new Date().toISOString(),
+  };
+  if (nuevo.es_principal) {
+    _locales = _locales.map(l => (l.id === nuevo.id ? l : { ...l, es_principal: false }));
+  }
+  _locales = [..._locales, nuevo];
+  _persistirLocales();
+  return { ...nuevo };
+}
+
+/** Actualiza nombre, dirección, teléfono, series o estado de un local. */
+export async function updateLocal(id: number, data: Partial<Pick<Local, 'nombre' | 'direccion' | 'telefono' | 'es_principal' | 'series_factura' | 'series_boleta' | 'is_active'>>): Promise<Local> {
+  await delay(150);
+  const objetivo = _locales.find(l => l.id === id);
+  if (!objetivo) throw new Error('Local no encontrado');
+
+  // Regla SUNAT: la serie solo cambia si el local aún no emitió comprobantes
+  if (data.series_factura && data.series_factura !== objetivo.series_factura) {
+    const tieneVentas = _sales.some(s => s.document_series === objetivo.series_factura);
+    if (tieneVentas) throw new Error(`No se puede cambiar la serie ${objetivo.series_factura}: el local ya emitió comprobantes (contabilidad inmutable).`);
+  }
+  if (data.series_boleta && data.series_boleta !== objetivo.series_boleta) {
+    const tieneVentas = _sales.some(s => s.document_series === objetivo.series_boleta);
+    if (tieneVentas) throw new Error(`No se puede cambiar la serie ${objetivo.series_boleta}: el local ya emitió comprobantes (contabilidad inmutable).`);
+  }
+
+  const actualizado: Local = { ...objetivo, ...data } as Local;
+  _locales = _locales.map(l => (l.id === id ? actualizado : l));
+  // Matriz exclusiva
+  if (actualizado.es_principal) {
+    _locales = _locales.map(l => (l.id === id ? l : { ...l, es_principal: false }));
+  }
+  _persistirLocales();
+  return { ...actualizado };
+}
+
+/**
+ * Desactiva un local. Regla de negocio: NO se borra si tiene ventas asociadas
+ * (trazabilidad SUNAT); solo se desactiva.
+ */
+export async function desactivarLocal(id: number): Promise<{ local: Local; movidoAMatriz: boolean }> {
+  await delay(150);
+  const objetivo = _locales.find(l => l.id === id);
+  if (!objetivo) throw new Error('Local no encontrado');
+  if (objetivo.es_principal) throw new Error('No se puede desactivar la matriz: designa primero otro local como principal.');
+
+  const actualizado: Local = { ...objetivo, is_active: false, es_principal: false };
+  _locales = _locales.map(l => (l.id === id ? actualizado : l));
+  _persistirLocales();
+
+  // Si el local desactivado era el activo, la UI caerá a la matriz automáticamente
+  return { local: { ...actualizado }, movidoAMatriz: true };
+}
+
+/** Reactiva un local. */
+export async function activarLocal(id: number): Promise<Local> {
+  await delay(150);
+  const objetivo = _locales.find(l => l.id === id);
+  if (!objetivo) throw new Error('Local no encontrado');
+  const actualizado: Local = { ...objetivo, is_active: true };
+  _locales = _locales.map(l => (l.id === id ? actualizado : l));
+  _persistirLocales();
+  return { ...actualizado };
+}
+
+/** Versión asíncrona para componentes con react-query. */
+export async function getLocales(): Promise<Local[]> {
+  await delay(150);
+  return [..._locales];
+}
 
 // ============================================================================
 // Dashboard
@@ -144,9 +292,13 @@ export async function getInventory(params?: { low_stock_only?: boolean }): Promi
   return list;
 }
 
-export async function getInventoryMovements(): Promise<InventoryMovement[]> {
+export async function getInventoryMovements(params?: { local_id?: number }): Promise<InventoryMovement[]> {
   await delay();
-  return [..._movements];
+  let list = [..._movements];
+  if (params?.local_id) {
+    list = list.filter(m => m.local_id === params.local_id);
+  }
+  return list;
 }
 
 export async function createInventoryMovement(data: any): Promise<InventoryMovement> {
@@ -226,10 +378,63 @@ export async function createOrder(data: any): Promise<Order> {
 // ============================================================================
 // Ventas
 // ============================================================================
-export async function getSales(): Promise<Sale[]> {
+export async function getSales(params?: { local_id?: number }): Promise<Sale[]> {
   await delay();
-  return [..._sales];
+  let list = [..._sales];
+  if (params?.local_id) {
+    list = list.filter(s => s.local_id === params.local_id);
+  }
+  return list;
 }
+
+// ---------------------------------------------------------------------------
+// MOTOR DE COMPROBANTES DE PAGO (SUNAT Perú)
+// Cada LOCAL tiene sus propias series (F101/B101 San Isidro, F102... etc.)
+// y correlativos INDEPENDIENTES por serie.
+// El correlativo es INMUTABLE: anular una venta nunca libera ni reusa números.
+// ---------------------------------------------------------------------------
+const SERIE_WIDTH = 8;
+
+type DocumentType = 'FACTURA' | 'BOLETA';
+
+/** Correlativo inicial calculado escaneando las ventas ya registradas. */
+let _correlativos: Record<string, number> = (() => {
+  const max: Record<string, number> = {};
+  _sales.forEach(s => {
+    if (!s.document_series || !s.document_number) return;
+    max[s.document_series] = Math.max(max[s.document_series] || 0, s.document_number);
+  });
+  return max;
+})();
+
+/**
+ * Emite el siguiente comprobante para (local, tipo). Cada serie lleva su
+ * correlativo propio: F101-00000001 y F102-00000001 conviven sin chocar.
+ */
+function siguienteComprobante(tipo: DocumentType, local: Local | null): { series: string; number: number; label: string } {
+  if (!local) throw new Error(`No hay local activo: designa una matriz o activa un local para emitir ${tipo}.`);
+  const series = tipo === 'FACTURA' ? local.series_factura : local.series_boleta;
+  _correlativos[series] = (_correlativos[series] || 0) + 1;
+  const numero = _correlativos[series];
+  return {
+    series,
+    number: numero,
+    label: `${series}-${String(numero).padStart(SERIE_WIDTH, '0')}`,
+  };
+}
+
+/** Formatea `F101-00000001` a partir de los campos del comprobante. */
+export function formatComprobante(sale: Sale): string {
+  if (!sale.document_series || !sale.document_number) return '—';
+  return `${sale.document_series}-${String(sale.document_number).padStart(SERIE_WIDTH, '0')}`;
+}
+
+/** Valida si un cliente puede recibir FACTURA (exige RUC / persona jurídica). */
+export function clientePermiteFactura(customer?: Customer | null): boolean {
+  if (!customer) return false;
+  return customer.doc_type === 'RUC' || customer.customer_type === 'JURIDICA';
+}
+
 
 export async function getSaleDetail(id: number): Promise<Sale | undefined> {
   await delay();
@@ -249,22 +454,49 @@ export async function getPaymentsBySale(saleId: number): Promise<Payment[]> {
   return _payments.filter(p => p.sale_id === saleId);
 }
 
+/** Todos los pagos registrados (para resúmenes financieros y gráficos). */
+export function getAllPayments(): Payment[] {
+  return [..._payments];
+}
+
 export async function createPayment(data: any): Promise<Payment> {
   await delay();
-  const sale = _sales.find(s => s.id === data.sale_id);
+  const sale = _sales.find(s => s.id === parseInt(data?.sale_id, 10) || s.id === data.sale_id);
   const method = mockPaymentMethods.find(m => m.id === data.payment_method_id);
+
+  // --- Integridad de cobranza: validar venta y monto contra el saldo real ---
+  if (!sale) throw new Error('Venta no encontrada: no se puede registrar el cobro.');
+  if (sale.status && sale.status !== 'CONFIRMED') throw new Error('Solo ventas CONFIRMED admiten cobros.');
+  const importe = Number(data.amount || 0);
+  const saldo = Math.max(0, Math.round((Number(sale.total_amount) - Number(sale.paid_amount)) * 100) / 100);
+  if (importe <= 0) throw new Error('El importe del cobro debe ser mayor a cero.');
+  if (importe > saldo + 0.001) {
+    throw new Error(`El cobro ($${importe.toFixed(2)}) excede el saldo pendiente de la venta ($${saldo.toFixed(2)}).`);
+  }
+
   const newPayment: Payment = {
     id: _payments.length + 100,
     sale_id: data.sale_id,
     sale_code: sale?.sale_code || 'VTA-???',
     payment_method_name: method?.name || 'Efectivo',
-    amount: data.amount,
+    amount: importe,
     reference: data.reference,
     received_by_name: 'Usuario Demo',
     payment_date: new Date().toISOString(),
     notes: data.notes || '',
   };
   _payments = [newPayment, ..._payments];
+
+  // --- Amortización contable de la venta (estado de cobro real) ---
+  const nuevoPagado = Math.min(
+    Number(sale.total_amount),
+    Math.round((Number(sale.paid_amount) + importe) * 100) / 100
+  );
+  const nuevoSaldo = Math.max(0, Math.round((Number(sale.total_amount) - nuevoPagado) * 100) / 100);
+  sale.paid_amount = nuevoPagado;
+  sale.pending_balance = nuevoSaldo;
+  sale.payment_status = nuevoSaldo === 0 ? 'PAID' : 'PARTIAL';
+
   return newPayment;
 }
 
@@ -310,10 +542,35 @@ export async function createSale(payload: {
   payment_method_id?: number;
   paid_amount?: number;
   payment_reference?: string;
+  /** Comprobante de pago a emitir: FACTURA (exige RUC) o BOLETA */
+  document_type: 'FACTURA' | 'BOLETA';
+  /** CONTADO: cobro inmediato | CREDITO: saldo pendiente por amortizar */
+  payment_condition?: 'CONTADO' | 'CREDITO';
+  /** Local/Sucursal emisor (default: local activo de la sesión) */
+  local_id?: number;
 }): Promise<Sale> {
   await delay();
   const customer = _customers.find(c => c.id === payload.customer_id);
   const saleCode = `VTA-2026-${String(_sales.length + 5).padStart(3, '0')}`;
+  const condicion = payload.payment_condition || 'CONTADO';
+
+  // Local emisor: explícito > local activo de la sesión > matriz. Solo activos.
+  const idActivoSesion = Number(localStorage.getItem('salesia_local_activo') || '') || 0;
+  const localEmisor =
+    (payload.local_id
+      ? _locales.find(l => l.id === Number(payload.local_id) && l.is_active)
+      : undefined)
+    || _locales.find(l => l.id === idActivoSesion && l.is_active)
+    || _locales.find(l => l.es_principal && l.is_active)
+    || _locales.find(l => l.is_active)
+    || null;
+
+  // Regla de negocio: la FACTURA solo se emite a clientes con RUC (jurídicos).
+  if (payload.document_type === 'FACTURA' && !clientePermiteFactura(customer)) {
+    throw new Error('No se puede emitir FACTURA: el cliente no cuenta con RUC. Emita una BOLETA de venta.');
+  }
+
+  const comprobante = siguienteComprobante(payload.document_type, localEmisor);
 
   const saleItems = payload.items.map((it, idx) => {
     const p = _products.find(prod => prod.id === it.product_id);
@@ -356,7 +613,7 @@ export async function createSale(payload: {
   const subtotal = saleItems.reduce((acc, it) => acc + it.line_subtotal, 0);
   const taxAmount = saleItems.reduce((acc, it) => acc + it.line_tax, 0);
   const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
-  const paidAmount = payload.paid_amount || 0;
+  const paidAmount = condicion === 'CONTADO' ? (payload.paid_amount || 0) : 0;
   const pendingBalance = Math.max(0, Math.round((totalAmount - paidAmount) * 100) / 100);
 
   const newSale: Sale = {
@@ -368,6 +625,12 @@ export async function createSale(payload: {
     salesperson_name: 'Usuario Demo',
     status: 'CONFIRMED',
     payment_status: pendingBalance === 0 ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'PENDING',
+    local_id: localEmisor?.id,
+    local_name: localEmisor?.nombre || 'Local no asignado',
+    document_type: payload.document_type,
+    document_series: comprobante.series,
+    document_number: comprobante.number,
+    payment_condition: condicion,
     subtotal: Math.round(subtotal * 100) / 100,
     tax_amount: Math.round(taxAmount * 100) / 100,
     discount_amount: 0,
